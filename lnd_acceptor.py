@@ -1,8 +1,10 @@
 from rules import is_channel_allowed
+import donate
 import rpc_pb2 as lnd
 import rpc_pb2_grpc as lndrpc
 import grpc
 import os
+import sys
 import queue
 import codecs
 
@@ -34,6 +36,13 @@ class ChannelRequest:
     def node(self):
         return LNNode(self._request.node_pubkey, self._client)
 
+def handle_donation(client):
+    donation_invoice = donate.check_donate()
+    if donation_invoice is not None:
+        client.SendPaymentSync(lnd.SendRequest(payment_request=donation_invoice))
+        print("Thank you for your support!")
+
+
 def handle_channel_open_requests():
     os.environ["GRPC_SSL_CIPHER_SUITES"] = "HIGH+ECDSA"
 
@@ -54,6 +63,8 @@ def handle_channel_open_requests():
     connection = grpc.secure_channel("localhost:10009", creds)
     client = lndrpc.LightningStub(connection)
 
+    handle_donation(client)
+
     response_queue = queue.Queue()
 
     def responses(queue):
@@ -66,4 +77,10 @@ def handle_channel_open_requests():
         resp = lnd.ChannelAcceptResponse(accept = accept, pending_chan_id = request.pending_chan_id)
         response_queue.put(resp)
 
-handle_channel_open_requests()
+if __name__ == "__main__":
+    print("Running LND forwarding node acceptor.")
+    print("If you find the project useful, you can donate to the author by running:")
+    print("%s --donate [AMOUNT [MEMO]]" % sys.argv[0])
+    print("The AMOUNT defaults to 50k sats, memo to empty")
+
+    handle_channel_open_requests()
